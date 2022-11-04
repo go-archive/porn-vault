@@ -40,17 +40,21 @@
       </div>
       <div class="mt-1 d-flex align-center">
         <v-btn @click="favorite" class="mr-1" icon>
-          <v-icon
-            :color="currentImage.favorite ? 'red' : undefined"
-          >{{ currentImage.favorite ? 'mdi-heart' : 'mdi-heart-outline' }}</v-icon>
+          <v-icon :color="currentImage.favorite ? 'red' : undefined">{{
+            currentImage.favorite ? "mdi-heart" : "mdi-heart-outline"
+          }}</v-icon>
         </v-btn>
         <v-btn @click="bookmark" icon>
-          <v-icon>{{ currentImage.bookmark ? 'mdi-bookmark-check' : 'mdi-bookmark-outline' }}</v-icon>
+          <v-icon>{{
+            currentImage.bookmark !== null ? "mdi-bookmark-check" : "mdi-bookmark-outline"
+          }}</v-icon>
         </v-btn>
         <v-spacer></v-spacer>
         <Rating @change="rate" :value="currentImage.rating" />
       </div>
-      <v-img class="mt-2" style="border-radius: 8px"
+      <v-img
+        class="mt-2"
+        style="border-radius: 8px"
         v-if="$vuetify.breakpoint.smAndDown"
         v-touch="{
           left: incrementIndex,
@@ -63,10 +67,9 @@
       <div class="mt-2">
         <div v-if="currentImage.scene">
           Part of scene
-          <a
-            class="primary--text"
-            :href="`#/scene/${currentImage.scene._id}`"
-          >{{ currentImage.scene.name }}</a>
+          <a class="primary--text" :href="`#/scene/${currentImage.scene._id}`">{{
+            currentImage.scene.name
+          }}</a>
         </div>
 
         <div class="mb-2">
@@ -74,22 +77,35 @@
         </div>
 
         <div class="pa-2">
-          <v-chip
-            class="mr-1 mb-1"
-            label
-            small
-            outlined
-            v-for="label in currentImage.labels.slice().sort((a, b) => a.name.localeCompare(b.name))"
-            :key="label._id"
-          >{{ label.name }}</v-chip>
-          <v-chip
-            label
-            color="primary"
-            v-ripple
-            @click="openLabelSelector"
-            small
-            :class="`mr-1 mb-1 hover ${$vuetify.theme.dark ? 'black--text' : 'white--text'}`"
-          >+ Add</v-chip>
+          <div class="pa-2" v-if="currentImage.labels.length">
+            <label-group
+              :item="currentImage._id"
+              :value="currentImage.labels"
+              @input="updateImageLabels"
+              :limit="999"
+            >
+              <v-chip
+                label
+                color="primary"
+                v-ripple
+                @click="openLabelSelector"
+                small
+                :class="`mr-1 mb-1 hover ${$vuetify.theme.dark ? 'black--text' : 'white--text'}`"
+                >+ Add</v-chip
+              >
+            </label-group>
+          </div>
+          <div v-else>
+            <v-chip
+              label
+              color="primary"
+              v-ripple
+              @click="openLabelSelector"
+              small
+              :class="`mr-1 mb-1 hover ${$vuetify.theme.dark ? 'black--text' : 'white--text'}`"
+              >+ Add</v-chip
+            >
+          </div>
         </div>
 
         <v-row>
@@ -103,7 +119,9 @@
           </v-col>
         </v-row>
         <div class="text-center mt-2">
-          <v-btn small text @click="openEditActorsDialog">Edit actors</v-btn>
+          <v-btn small text @click="openEditActorsDialog">
+            Edit {{ (actorPlural || "").toLowerCase() }}
+          </v-btn>
         </div>
 
         <v-divider class="mt-4"></v-divider>
@@ -123,7 +141,7 @@
 
     <v-dialog scrollable v-model="labelSelectorDialog" max-width="400px">
       <v-card :loading="labelEditLoader" v-if="currentImage">
-        <v-card-title>Select labels for '{{ currentImage.name }}'</v-card-title>
+        <v-card-title>Select image labels</v-card-title>
 
         <v-text-field
           clearable
@@ -144,6 +162,7 @@
         <v-divider></v-divider>
 
         <v-card-actions>
+          <v-btn @click="selectedLabels = []" text class="text-none">Clear</v-btn>
           <v-spacer></v-spacer>
           <v-btn @click="editLabels" text color="primary" class="text-none">Edit</v-btn>
         </v-card-actions>
@@ -152,20 +171,31 @@
 
     <v-dialog v-model="removeDialog" max-width="400px">
       <v-card>
-        <v-card-title>Really delete '{{ currentImage.name }}'?</v-card-title>
+        <v-card-title>Really delete image?</v-card-title>
         <v-card-text>
-          <v-alert type="error">This will absolutely annihilate the original source file on disk</v-alert>Actors and scenes featuring this image will stay in your collection.
+          <v-alert type="error">
+            This will absolutely annihilate the original source file on disk
+          </v-alert>
+          {{ actorPlural }} and scenes featuring this image will stay in your collection.
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn text color="error" @click="$emit('delete', index); removeDialog = false">Delete</v-btn>
+          <v-btn
+            text
+            color="error"
+            @click="
+              $emit('delete', index);
+              removeDialog = false;
+            "
+            >Delete</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
 
     <v-dialog v-model="editActorsDialog" max-width="400px">
       <v-card>
-        <v-card-title>Edit actors</v-card-title>
+        <v-card-title>Edit image {{ (actorPlural || "").toLowerCase() }}</v-card-title>
         <v-card-text>
           <ActorSelector v-model="editActors" />
         </v-card-text>
@@ -180,37 +210,34 @@
 
 <script lang="ts">
 import { Component, Vue, Watch, Prop } from "vue-property-decorator";
-import ApolloClient, { serverBase } from "../apollo";
+import ApolloClient from "../apollo";
 import gql from "graphql-tag";
 import LabelSelector from "../components/LabelSelector.vue";
-import InfiniteLoading from "vue-infinite-loading";
-import { contextModule } from "../store/context";
-import ImageCard from "../components/ImageCard.vue";
-import actorFragment from "../fragments/actor";
+import ImageCard from "../components/Cards/Image.vue";
 import ActorSelector from "../components/ActorSelector.vue";
 import IImage from "../types/image";
 import ILabel from "../types/label";
 import IActor from "../types/actor";
 import SceneSelector from "../components/SceneSelector.vue";
-import IScene from "../types/scene";
 import { Touch } from "vuetify/lib/directives";
 import hotkeys from "hotkeys-js";
+import { contextModule } from "@/store/context";
 
 @Component({
   components: {
     LabelSelector,
-    InfiniteLoading,
     ImageCard,
     ActorSelector,
-    SceneSelector
+    SceneSelector,
   },
   directives: {
-    Touch
-  }
+    Touch,
+  },
 })
 export default class Lightbox extends Vue {
   @Prop(Array) items!: IImage[];
   @Prop() index!: number | null;
+
   showImageDetails = true;
 
   labelSelectorDialog = false;
@@ -226,6 +253,10 @@ export default class Lightbox extends Vue {
 
   labelSearchQuery = "";
 
+  get actorPlural() {
+    return contextModule.actorPlural;
+  }
+
   get sidebarCss() {
     return {
       "overflow-x": "hidden",
@@ -237,9 +268,9 @@ export default class Lightbox extends Vue {
         sm: "100%",
         md: "300px",
         lg: "300px",
-        xl: "300px"
+        xl: "300px",
         // @ts-ignore
-      }[this.$vuetify.breakpoint.name]
+      }[this.$vuetify.breakpoint.name],
     };
   }
 
@@ -248,7 +279,7 @@ export default class Lightbox extends Vue {
   }
 
   mounted() {
-    hotkeys("*", ev => {
+    hotkeys("*", (ev) => {
       if (this.index === null) return;
 
       if (ev.keyCode === 27) {
@@ -282,21 +313,28 @@ export default class Lightbox extends Vue {
 
   incrementIndex() {
     if (this.index === null) return;
-    this.$emit(
-      "index",
-      Math.min(<number>this.index + 1, this.items.length - 1)
-    );
+    this.$emit("index", Math.min(<number>this.index + 1, this.items.length - 1));
 
     // TODO: load next page
     if (this.index == this.items.length - 1) this.$emit("more");
   }
 
+  updateImageLabels(labels: ILabel[]) {
+    this.$emit("update", {
+      index: this.index,
+      key: "labels",
+      value: labels,
+    });
+  }
+
   editImageScene() {
-    if (!this.currentImage) return;
+    if (!this.currentImage) {
+      return;
+    }
 
     ApolloClient.mutate({
       mutation: gql`
-        mutation($ids: [String!]!, $opts: ImageUpdateOpts!) {
+        mutation ($ids: [String!]!, $opts: ImageUpdateOpts!) {
           updateImages(ids: $ids, opts: $opts) {
             _id
           }
@@ -305,24 +343,26 @@ export default class Lightbox extends Vue {
       variables: {
         ids: [this.currentImage._id],
         opts: {
-          scene: this.editScene ? this.editScene._id : null
-        }
-      }
-    }).then(res => {
+          scene: this.editScene ? this.editScene._id : null,
+        },
+      },
+    }).then((res) => {
       this.$emit("update", {
         index: this.index,
         key: "scene",
-        value: this.editScene
+        value: this.editScene,
       });
     });
   }
 
   editImageActors() {
-    if (!this.currentImage) return;
+    if (!this.currentImage) {
+      return;
+    }
 
     ApolloClient.mutate({
       mutation: gql`
-        mutation($ids: [String!]!, $opts: ImageUpdateOpts!) {
+        mutation ($ids: [String!]!, $opts: ImageUpdateOpts!) {
           updateImages(ids: $ids, opts: $opts) {
             _id
           }
@@ -331,21 +371,24 @@ export default class Lightbox extends Vue {
       variables: {
         ids: [this.currentImage._id],
         opts: {
-          actors: this.editActors.map(a => a._id)
-        }
-      }
-    }).then(res => {
+          actors: this.editActors.map((a) => a._id),
+        },
+      },
+    }).then((res) => {
       this.$emit("update", {
         index: this.index,
         key: "actors",
-        value: this.editActors
+        value: this.editActors,
       });
       this.editActorsDialog = false;
     });
   }
 
   openEditActorsDialog() {
-    if (!this.currentImage) return;
+    if (!this.currentImage) {
+      return;
+    }
+
     this.editActors = JSON.parse(JSON.stringify(this.currentImage.actors));
     this.editActorsDialog = true;
   }
@@ -364,19 +407,21 @@ export default class Lightbox extends Vue {
     this.selectedLabels = [];
 
     if (this.items[newVal]) {
-      this.selectedLabels = this.items[newVal].labels.map(l =>
-        this.allLabels.findIndex(k => k._id == l._id)
+      this.selectedLabels = this.items[newVal].labels.map((l) =>
+        this.allLabels.findIndex((k) => k._id == l._id)
       );
       this.editScene = this.items[newVal].scene;
     }
   }
 
   rate(rating: number) {
-    if (!this.currentImage) return;
+    if (!this.currentImage) {
+      return;
+    }
 
     ApolloClient.mutate({
       mutation: gql`
-        mutation($ids: [String!]!, $opts: ImageUpdateOpts!) {
+        mutation ($ids: [String!]!, $opts: ImageUpdateOpts!) {
           updateImages(ids: $ids, opts: $opts) {
             rating
           }
@@ -385,24 +430,26 @@ export default class Lightbox extends Vue {
       variables: {
         ids: [this.currentImage._id],
         opts: {
-          rating
-        }
-      }
-    }).then(res => {
+          rating,
+        },
+      },
+    }).then((res) => {
       this.$emit("update", {
         index: this.index,
         key: "rating",
-        value: rating
+        value: rating,
       });
     });
   }
 
   favorite() {
-    if (!this.currentImage) return;
+    if (!this.currentImage) {
+      return;
+    }
 
     ApolloClient.mutate({
       mutation: gql`
-        mutation($ids: [String!]!, $opts: ImageUpdateOpts!) {
+        mutation ($ids: [String!]!, $opts: ImageUpdateOpts!) {
           updateImages(ids: $ids, opts: $opts) {
             favorite
           }
@@ -411,28 +458,30 @@ export default class Lightbox extends Vue {
       variables: {
         ids: [this.currentImage._id],
         opts: {
-          favorite: !this.currentImage.favorite
-        }
-      }
+          favorite: !this.currentImage.favorite,
+        },
+      },
     })
-      .then(res => {
+      .then((res) => {
         this.$emit("update", {
           index: this.index,
           key: "favorite",
-          value: res.data.updateImages[0].favorite
+          value: res.data.updateImages[0].favorite,
         });
       })
-      .catch(err => {
+      .catch((err) => {
         console.error(err);
       });
   }
 
   bookmark() {
-    if (!this.currentImage) return;
+    if (!this.currentImage) {
+      return;
+    }
 
     ApolloClient.mutate({
       mutation: gql`
-        mutation($ids: [String!]!, $opts: ImageUpdateOpts!) {
+        mutation ($ids: [String!]!, $opts: ImageUpdateOpts!) {
           updateImages(ids: $ids, opts: $opts) {
             bookmark
           }
@@ -441,33 +490,36 @@ export default class Lightbox extends Vue {
       variables: {
         ids: [this.currentImage._id],
         opts: {
-          bookmark: this.currentImage.bookmark ? null : Date.now()
-        }
-      }
+          bookmark: this.currentImage.bookmark ? null : Date.now(),
+        },
+      },
     })
-      .then(res => {
+      .then((res) => {
         this.$emit("update", {
           index: this.index,
           key: "bookmark",
-          value: res.data.updateImages[0].bookmark
+          value: res.data.updateImages[0].bookmark,
         });
       })
-      .catch(err => {
+      .catch((err) => {
         console.error(err);
       });
   }
 
   editLabels() {
-    if (!this.currentImage) return;
+    if (!this.currentImage) {
+      return;
+    }
 
     this.labelEditLoader = true;
     ApolloClient.mutate({
       mutation: gql`
-        mutation($ids: [String!]!, $opts: ImageUpdateOpts!) {
+        mutation ($ids: [String!]!, $opts: ImageUpdateOpts!) {
           updateImages(ids: $ids, opts: $opts) {
             labels {
               _id
               name
+              color
             }
           }
         }
@@ -475,21 +527,19 @@ export default class Lightbox extends Vue {
       variables: {
         ids: [this.currentImage._id],
         opts: {
-          labels: this.selectedLabels
-            .map(i => this.allLabels[i])
-            .map(l => l._id)
-        }
-      }
+          labels: this.selectedLabels.map((i) => this.allLabels[i]).map((l) => l._id),
+        },
+      },
     })
-      .then(res => {
+      .then((res) => {
         this.$emit("update", {
           index: this.index,
           key: "labels",
-          value: res.data.updateImages[0].labels
+          value: res.data.updateImages[0].labels,
         });
         this.labelSelectorDialog = false;
       })
-      .catch(err => {
+      .catch((err) => {
         console.error(err);
       })
       .finally(() => {
@@ -497,59 +547,70 @@ export default class Lightbox extends Vue {
       });
   }
 
-  openLabelSelector() {
-    if (!this.currentImage) return;
+  async loadLabels() {
+    const res = await ApolloClient.query({
+      query: gql`
+        {
+          getLabels {
+            _id
+            name
+            aliases
+            color
+          }
+        }
+      `,
+    });
+
+    this.allLabels = res.data.getLabels;
+  }
+
+  async openLabelSelector() {
+    if (!this.currentImage) {
+      return;
+    }
 
     if (!this.allLabels.length) {
-      ApolloClient.query({
-        query: gql`
-          {
-            getLabels {
-              _id
-              name
-              aliases
-            }
-          }
-        `
-      })
-        .then(res => {
-          if (!this.currentImage) return;
+      try {
+        await this.loadLabels();
 
-          this.allLabels = res.data.getLabels;
-          this.selectedLabels = this.currentImage.labels.map(l =>
-            this.allLabels.findIndex(k => k._id == l._id)
-          );
-          this.labelSelectorDialog = true;
-        })
-        .catch(err => {
-          console.error(err);
-        });
+        if (!this.currentImage) {
+          return;
+        }
+
+        this.selectedLabels = this.currentImage.labels.map((l) =>
+          this.allLabels.findIndex((k) => k._id == l._id)
+        );
+        this.labelSelectorDialog = true;
+      } catch (error) {
+        console.error(error);
+      }
     } else {
       this.labelSelectorDialog = true;
     }
   }
 
   imageLink(image: any) {
-    return `${serverBase}/image/${image._id}?password=${localStorage.getItem(
-      "password"
-    )}`;
+    return `/api/media/image/${image._id}?password=${localStorage.getItem("password")}`;
   }
 
   get currentImage() {
-    if (this.index !== null) return this.items[this.index];
+    if (this.index !== null) {
+      return this.items[this.index];
+    }
     return null;
   }
 
   avatar(actor: any) {
-    if (actor.avatar)
-      return `${serverBase}/image/${
-        actor.avatar._id
-      }?password=${localStorage.getItem("password")}`;
+    if (actor.avatar) {
+      return `/api/media/image/${actor.avatar._id}?password=${localStorage.getItem("password")}`;
+    }
     return "";
   }
 
   avatarColor(actor: any) {
-    if (actor.avatar) return actor.avatar.color || "#ffffff";
+    if (actor.avatar) {
+      return actor.avatar.color || "#ffffff";
+    }
     return "#ffffff";
   }
 }

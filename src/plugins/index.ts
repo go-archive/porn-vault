@@ -1,30 +1,24 @@
-import axios from "axios";
-import boxen from "boxen";
-import cheerio from "cheerio";
-import debug from "debug";
-import ffmpeg from "fluent-ffmpeg";
-import * as fs from "fs";
-import { existsSync } from "fs";
-import inquirer from "inquirer";
-import jimp from "jimp";
-import moment from "moment";
-import ora from "ora";
-import * as os from "os";
 import * as nodepath from "path";
-import readline from "readline";
-import semver from "semver";
-import YAML from "yaml";
+import { inspect } from "util";
 
 import { IConfig } from "../config/schema";
+import { getMatcher, getMatcherByType } from "../matching/matcher";
 import { walk } from "../utils/fs/async";
-import * as logger from "../utils/logger";
-import { libraryPath } from "../utils/misc";
+import { createPluginLogger, formatMessage, handleError, logger } from "../utils/logger";
+import { libraryPath } from "../utils/path";
 import { Dictionary } from "../utils/types";
 import VERSION from "../version";
+import { modules } from "./context";
+import { getPlugin, requireUncached } from "./register";
+import { createPluginStoreAccess } from "./store";
 
-function requireUncached(module: string): unknown {
-  delete require.cache[require.resolve(module)];
-  return <unknown>require(module);
+export function resolvePlugin(
+  item: string | [string, Record<string, unknown>]
+): [string, Record<string, unknown> | undefined] {
+  if (typeof item === "string") {
+    return [item, undefined];
+  }
+  return item;
 }
 
 export async function runPluginsSerial(
@@ -38,19 +32,13 @@ export async function runPluginsSerial(
     return result;
   }
 
+  logger.info(`Running plugin event: ${event}`);
+
   let numErrors = 0;
 
   for (const pluginItem of config.plugins.events[event]) {
-    const pluginName: string = pluginItem;
-    let pluginArgs: Record<string, unknown> | undefined;
+    const [pluginName, pluginArgs] = resolvePlugin(pluginItem);
 
-    /*  if (typeof pluginItem === "string") pluginName = pluginItem;
-    else {
-      pluginName = pluginItem[0];
-      pluginArgs = pluginItem[1];
-    } */
-
-    logger.message(`Running plugin ${pluginName}:`);
     try {
       const pluginResult = await runPlugin(config, pluginName, {
         data: <typeof result>JSON.parse(JSON.stringify(result)),
@@ -60,18 +48,19 @@ export async function runPluginsSerial(
       });
       Object.assign(result, pluginResult);
     } catch (error) {
-      const _err = <Error>error;
-      logger.log(_err);
-      logger.error(_err.message);
+      handleError(`Plugin error`, error);
       numErrors++;
     }
   }
-  logger.log(`Plugin run over...`);
+
+  const len = config.plugins.events[event].length;
   if (!numErrors) {
-    logger.success(`Ran successfully ${config.plugins.events[event].length} plugins.`);
+    logger.info(`Ran ${len} plugins (${len} successful)`);
   } else {
-    logger.warn(`Ran ${config.plugins.events[event].length} plugins with ${numErrors} errors.`);
+    logger.error(`Ran ${len} plugins (${len - numErrors} successful, ${numErrors} errors)`);
   }
+  logger.debug("Plugin series result");
+  logger.debug(inspect(result, true, null, true));
   return result;
 }
 
@@ -81,83 +70,63 @@ export async function runPlugin(
   inject?: Dictionary<unknown>,
   args?: Dictionary<unknown>
 ): Promise<unknown> {
-  const plugin = config.plugins.register[pluginName];
+  const pluginDefinition = config.plugins.register[pluginName];
 
-  if (!plugin) {
+  if (!pluginDefinition) {
     throw new Error(`${pluginName}: plugin not found.`);
   }
 
-  const path = nodepath.resolve(plugin.path);
+  const func = getPlugin(pluginName);
 
-  if (path) {
-    if (!existsSync(path)) {
-      throw new Error(`${pluginName}: definition not found (missing file).`);
-    }
+  const pluginArgs = JSON.parse(JSON.stringify(args || pluginDefinition.args || {}));
+  const pluginLogger = createPluginLogger(pluginName, config.log.writeFile);
 
-    const func = requireUncached(path);
+  const pluginVersion = func.info?.version ? `v${func.info?.version}` : "unknown version";
+  logger.info(`Running plugin ${pluginName} ${pluginVersion}`);
+  logger.debug(formatMessage(pluginDefinition));
 
-    if (typeof func !== "function") {
-      throw new Error(`${pluginName}: not a valid plugin.`);
-    }
-
-    logger.log(plugin);
-
-    try {
-      const result = (await func({
-        $walk: walk,
-        $version: VERSION,
-        $config: JSON.parse(JSON.stringify(config)) as IConfig,
-        $pluginName: pluginName,
-        $pluginPath: path,
-        $cwd: process.cwd(),
-        $library: libraryPath(""),
-        $require: (partial: string) => {
-          if (typeof partial !== "string") {
-            throw new TypeError("$require: String required");
-          }
-
-          return requireUncached(nodepath.resolve(path, partial));
-        },
-        /* $modules: {
-          ...
-          fs: fs,
-          path: nodepath,
-          axios: axios,
-          cheerio: cheerio,
-          moment: moment
-        }, */
-        // TODO: deprecate at some point, replace with ^
-        $semver: semver,
-        $os: os,
-        $readline: readline,
-        $inquirer: inquirer,
-        $yaml: YAML,
-        $jimp: jimp,
-        $ffmpeg: ffmpeg,
-        $fs: fs,
-        $path: nodepath,
-        $axios: axios,
-        $cheerio: cheerio,
-        $moment: moment,
-        $log: debug("vault:plugin"),
-        $loader: ora,
-        $boxen: boxen,
-        $throw: (str: string) => {
-          throw new Error(str);
-        },
-        args: args || plugin.args || {},
-        ...inject,
-      })) as unknown;
-
-      if (typeof result !== "object") {
-        throw new Error(`${pluginName}: malformed output.`);
+  const result = await func({
+    // MAIN CONTEXT
+    $config: JSON.parse(JSON.stringify(config)) as IConfig,
+    $cwd: process.cwd(),
+    $formatMessage: formatMessage,
+    $getMatcher: getMatcherByType,
+    $library: libraryPath(""),
+    $log: (...msgs: unknown[]) => {
+      logger.warn(`$log is deprecated, use $logger instead`);
+      pluginLogger.info(msgs.map(formatMessage).join(" "));
+    },
+    $logger: pluginLogger,
+    $matcher: getMatcher(),
+    $require: (partial: string) => {
+      if (typeof partial !== "string") {
+        throw new TypeError("$require: String required");
       }
+      return requireUncached(nodepath.resolve(pluginDefinition.path, partial));
+    },
+    // Persistent in-memory data store
+    $store: createPluginStoreAccess(pluginName),
+    $throw: (...msgs: unknown[]) => {
+      const msg = msgs.map(formatMessage).join(" ");
+      pluginLogger.error(msg);
+      throw new Error(msg);
+    },
+    $version: VERSION,
+    $walk: walk,
+    // PLUGIN
+    args: pluginArgs,
+    $args: pluginArgs,
+    $pluginName: pluginName,
+    $pluginPath: nodepath.resolve(pluginDefinition.path),
+    ...inject,
+    ...modules,
+  });
 
-      return result || {};
-    } catch (error) {
-      throw new Error(error);
-    }
-  } else {
-    throw new Error(`${pluginName}: path not defined.`);
+  if (typeof result !== "object") {
+    throw new Error(`${pluginName}: malformed output.`);
   }
+
+  logger.debug("Plugin result:");
+  logger.debug(inspect(result, true, null, true));
+  return result || {};
 }

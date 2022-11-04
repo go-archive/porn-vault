@@ -17,6 +17,7 @@ export default gql`
     labels {
       _id
       name
+      color
     }
     thumbnail {
       _id
@@ -26,6 +27,7 @@ export default gql`
       size
       duration
       fps
+      bitrate
       dimensions {
         width
         height

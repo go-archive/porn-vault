@@ -8,9 +8,17 @@ export default gql`
 
   type SceneMeta {
     size: Long
-    duration: Int
+    duration: Float
     dimensions: Dimensions!
     fps: Float
+    bitrate: Int
+  }
+
+  type AvailableStream {
+    label: String!
+    mimeType: String
+    streamType: String!
+    transcode: Boolean!
   }
 
   type SceneSearchResults {
@@ -19,9 +27,30 @@ export default gql`
     items: [Scene!]!
   }
 
+  input SceneSearchQuery {
+    query: String
+    favorite: Boolean
+    bookmark: Boolean
+    rating: Int
+    include: [String!]
+    exclude: [String!]
+    studios: [String!]
+    actors: [String!]
+    sortBy: String
+    sortDir: String
+    skip: Int
+    take: Int
+    page: Int
+    durationMin: Int
+    durationMax: Int
+    unwatchedOnly: Boolean
+
+    rawQuery: Json
+  }
+
   extend type Query {
     numScenes: Int!
-    getScenes(query: String, seed: String): SceneSearchResults!
+    getScenes(query: SceneSearchQuery!, seed: String): SceneSearchResults!
     getSceneById(id: String!): Scene
     getScenesWithoutActors(num: Int): [Scene!]!
     getScenesWithoutLabels(num: Int): [Scene!]!
@@ -54,6 +83,13 @@ export default gql`
     studio: Studio
     markers: [Marker!]!
     movies: [Movie!]!
+    availableStreams: [AvailableStream!]!
+  }
+
+  type RunFFProbeResult {
+    # TODO: use Json instead
+    ffprobe: String
+    scene: Scene!
   }
 
   input SceneUpdateOpts {
@@ -69,6 +105,7 @@ export default gql`
     releaseDate: Long
     studio: String
     customFields: Object
+    path: String
   }
 
   extend type Mutation {
@@ -78,7 +115,7 @@ export default gql`
     unwatchScene(id: String!): Scene!
     updateScenes(ids: [String!]!, opts: SceneUpdateOpts!): [Scene!]!
     removeScenes(ids: [String!]!, deleteImages: Boolean): Boolean!
-    runScenePlugins(ids: [String!]!): [Scene!]!
-    runAllScenePlugins: [Scene!]!
+    runScenePlugins(id: String!): Scene
+    runFFProbe(id: String!): RunFFProbeResult
   }
 `;

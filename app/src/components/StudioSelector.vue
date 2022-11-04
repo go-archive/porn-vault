@@ -1,6 +1,8 @@
 <template>
   <div>
     <v-autocomplete
+      solo
+      flat
       color="primary"
       v-model="innerValue"
       :loading="loading"
@@ -21,6 +23,9 @@
         <template>
           <v-list-item-content>
             <v-list-item-title v-html="item.name"></v-list-item-title>
+            <v-list-item-subtitle v-if="item.aliases.length">
+              a.k.a. {{ item.aliases.join(", ") }}
+            </v-list-item-subtitle>
           </v-list-item-content>
         </template>
       </template>
@@ -30,7 +35,7 @@
 
 <script lang="ts">
 import { Component, Vue, Prop, Watch } from "vue-property-decorator";
-import ApolloClient, { serverBase } from "../apollo";
+import ApolloClient from "../apollo";
 import gql from "graphql-tag";
 import studioFragment from "../fragments/studio";
 
@@ -56,15 +61,15 @@ export default class StudioSelector extends Vue {
   onInnerValueChange(newVal: string) {
     this.$emit(
       "input",
-      this.studios.find(a => a._id == newVal)
+      this.studios.find((a) => a._id == newVal)
     );
   }
 
   thumbnail(scene: any) {
     if (scene.thumbnail)
-      return `${serverBase}/image/${
-        scene.thumbnail._id
-      }?password=${localStorage.getItem("password")}`;
+      return `/api/media/image/${scene.thumbnail._id}?password=${localStorage.getItem(
+        "password"
+      )}`;
     return "";
   }
 
@@ -82,40 +87,34 @@ export default class StudioSelector extends Vue {
   }
 
   async fetchPage(searchQuery: string) {
-    try {
-      const query = `query:'${searchQuery || ""}'`;
-
-      const result = await ApolloClient.query({
-        query: gql`
-          query($query: String) {
-            getStudios(query: $query) {
-              items {
-                ...StudioFragment
-              }
+    const result = await ApolloClient.query({
+      query: gql`
+        query($query: StudioSearchQuery!) {
+          getStudios(query: $query) {
+            items {
+              ...StudioFragment
             }
           }
-          ${studioFragment}
-        `,
-        variables: {
-          query
         }
-      });
+        ${studioFragment}
+      `,
+      variables: {
+        query: {
+          query: searchQuery || "",
+        },
+      },
+    });
 
-      this.loading = false;
-      this.studios.push(...result.data.getStudios.items);
+    this.loading = false;
+    this.studios.push(...result.data.getStudios.items);
 
-      let ids = [...new Set(this.studios.map(a => a._id))];
+    let ids = [...new Set(this.studios.map((a) => a._id))];
 
-      if (this.ignore !== null) {
-        ids = ids.filter(id => id != this.ignore);
-      }
-
-      this.studios = ids
-        .map(id => this.studios.find(a => a._id == id))
-        .filter(Boolean) as any[];
-    } catch (err) {
-      throw err;
+    if (this.ignore !== null) {
+      ids = ids.filter((id) => id != this.ignore);
     }
+
+    this.studios = ids.map((id) => this.studios.find((a) => a._id == id)).filter(Boolean) as any[];
   }
 }
 </script>

@@ -1,4 +1,4 @@
-import { labelledItemCollection } from "../database/index";
+import { collections } from "../database/index";
 import { generateHash } from "../utils/hash";
 
 export default class LabelledItem {
@@ -8,30 +8,30 @@ export default class LabelledItem {
   type: string;
 
   constructor(item: string, label: string, type: string) {
-    this._id = "li_" + generateHash();
+    this._id = `li_${generateHash()}`;
     this.item = item;
     this.label = label;
     this.type = type;
   }
 
   static async getAll(): Promise<LabelledItem[]> {
-    return labelledItemCollection.getAll();
+    return collections.labelledItems.getAll();
   }
 
   static async getByLabel(label: string): Promise<LabelledItem[]> {
-    return labelledItemCollection.query("label-index", label);
+    return collections.labelledItems.query("label-index", label);
   }
 
   static async getByItem(item: string): Promise<LabelledItem[]> {
-    return labelledItemCollection.query("item-index", item);
+    return collections.labelledItems.query("item-index", item);
   }
 
   static async getByType(type: string): Promise<LabelledItem[]> {
-    return labelledItemCollection.query("type-index", type);
+    return collections.labelledItems.query("type-index", type);
   }
 
   static async get(from: string, to: string): Promise<LabelledItem | undefined> {
-    const fromReferences = await labelledItemCollection.query("item-index", from);
+    const fromReferences = await collections.labelledItems.query("item-index", from);
     return fromReferences.find((r) => r.label === to);
   }
 
@@ -47,7 +47,14 @@ export default class LabelledItem {
     }
   }
 
+  static async remove(itemId: string, labelId: string): Promise<void> {
+    const ref = await LabelledItem.get(itemId, labelId);
+    if (ref) {
+      await LabelledItem.removeById(ref._id);
+    }
+  }
+
   static async removeById(_id: string): Promise<void> {
-    await labelledItemCollection.remove(_id);
+    await collections.labelledItems.remove(_id);
   }
 }

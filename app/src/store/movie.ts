@@ -1,4 +1,4 @@
-import { VuexModule, Module, Mutation, Action } from "vuex-class-modules";
+import { VuexModule, Module, Mutation } from "vuex-class-modules";
 import IScene from "@/types/scene";
 import IActor from "@/types/actor";
 import IMovie from "@/types/movie";
@@ -6,44 +6,6 @@ import IMovie from "@/types/movie";
 @Module
 class MovieModule extends VuexModule {
   current = null as IMovie | null;
-
-  page = 1;
-  numResults = 0;
-  numPages = 0;
-  // items = [] as IMovie[];
-
-  /* @Mutation
-  unshift(items: IMovie[]) {
-    this.items.unshift(...items);
-  } */
-
-  @Mutation
-  resetPagination() {
-    // this.items = [];
-    this.numPages = 0;
-    this.numResults = 0;
-    this.page = 1;
-  }
-
-  @Mutation
-  setPage(num: number) {
-    this.page = num;
-  }
-
-  @Mutation
-  setPagination({
-    // items,
-    numResults,
-    numPages,
-  }: {
-    // items: IMovie[];
-    numResults: number;
-    numPages: number;
-  }) {
-    // this.items = items;
-    this.numResults = numResults;
-    this.numPages = numPages;
-  }
 
   @Mutation
   setName(name: string) {
@@ -71,32 +33,32 @@ class MovieModule extends VuexModule {
   }
 
   @Mutation
-  setBookmark(bool: number | null) {
-    if (this.current) this.current.bookmark = bool;
+  setBookmark(dateValue: number | null) {
+    if (this.current) this.current.bookmark = dateValue;
   }
 
   @Mutation
-  setFrontCover(id: string) {
+  setFrontCover(cover: {
+    _id: string;
+    color: string;
+    meta: { dimensions: { height: number; width: number } };
+  }) {
     if (this.current) {
-      if (!this.current.frontCover)
-        this.current.frontCover = { _id: id, color: null };
-      else this.current.frontCover._id = id;
+      this.current.frontCover = cover;
     }
   }
 
   @Mutation
-  setBackCover(id: string) {
+  setBackCover(cover: { _id: string; meta: { dimensions: { height: number; width: number } } }) {
     if (this.current) {
-      if (!this.current.backCover) this.current.backCover = { _id: id };
-      else this.current.backCover._id = id;
+      this.current.backCover = cover;
     }
   }
 
   @Mutation
-  setSpineCover(id: string) {
+  setSpineCover(cover: { _id: string; meta: { dimensions: { height: number; width: number } } }) {
     if (this.current) {
-      if (!this.current.spineCover) this.current.spineCover = { _id: id };
-      else this.current.spineCover._id = id;
+      this.current.spineCover = cover;
     }
   }
 

@@ -1,23 +1,31 @@
 import { ApolloServer } from "apollo-server-express";
-// import responseCachePlugin from "apollo-server-plugin-response-cache";
+import { ApolloServerPlugin, GraphQLRequestListener } from "apollo-server-plugin-base";
 import express from "express";
+import { graphqlUploadExpress } from "graphql-upload";
 
-// import { getConfig } from "./config";
 import schema from "../graphql/types";
+import { formatMessage, logger } from "../utils/logger";
+
+const apolloLogger: ApolloServerPlugin = {
+  requestDidStart(requestContext): GraphQLRequestListener {
+    return {
+      didEncounterErrors(requestContext) {
+        logger.error(`Error in graphql api: ${formatMessage(requestContext.errors)}`);
+      },
+    };
+  },
+};
 
 export function mountApolloServer(app: express.Application): void {
-  // const config = getConfig();
   const server = new ApolloServer({
-    plugins: [
-      /* responseCachePlugin() */
-    ],
     schema,
-    /* cacheControl: {
-      defaultMaxAge: Math.max(0, config.),
-    }, */
     context: ({ req }) => ({
       req,
     }),
+    uploads: false,
+    playground: !!process.env.PV_QL_PLAYGROUND,
+    plugins: [apolloLogger],
   });
-  server.applyMiddleware({ app, path: "/ql" });
+  app.use(graphqlUploadExpress());
+  server.applyMiddleware({ app, path: "/api/ql" });
 }

@@ -1,18 +1,20 @@
 <template>
-  <div style="width:100%" v-if="currentStudio" class="d-flex align-center">
+  <div style="width: 100%" v-if="currentStudio" class="d-flex align-center">
     <v-btn class="mr-1" icon @click="$router.go(-1)">
       <v-icon>mdi-chevron-left</v-icon>
     </v-btn>
-    <v-toolbar-title v-if="$vuetify.breakpoint.smAndUp" class="mr-1 title">{{ currentStudio.name }}</v-toolbar-title>
+    <v-toolbar-title v-if="$vuetify.breakpoint.smAndUp" class="mr-1 title">{{
+      currentStudio.name
+    }}</v-toolbar-title>
 
     <v-btn @click="favorite" class="mr-1" icon>
-      <v-icon
-        :color="currentStudio.favorite ? 'error' : undefined"
-      >{{ currentStudio.favorite ? 'mdi-heart' : 'mdi-heart-outline' }}</v-icon>
+      <v-icon :color="currentStudio.favorite ? 'error' : undefined">{{
+        currentStudio.favorite ? "mdi-heart" : "mdi-heart-outline"
+      }}</v-icon>
     </v-btn>
 
     <v-btn @click="bookmark" icon>
-      <v-icon>{{ currentStudio.bookmark ? 'mdi-bookmark-check' : 'mdi-bookmark-outline' }}</v-icon>
+      <v-icon>{{ currentStudio.bookmark !== null ? "mdi-bookmark-check" : "mdi-bookmark-outline" }}</v-icon>
     </v-btn>
 
     <v-spacer></v-spacer>
@@ -45,6 +47,13 @@
               :rows="2"
             />
 
+            <v-text-field
+              :rules="urlRules"
+              color="primary"
+              v-model="editUrl"
+              placeholder="URL"
+            />
+
             <v-combobox
               clearable
               color="primary"
@@ -61,13 +70,9 @@
         <v-divider></v-divider>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn
-            text
-            class="text-none"
-            @click="editStudio"
-            color="primary"
-            :disabled="!validEdit"
-          >Edit</v-btn>
+          <v-btn text class="text-none" @click="editStudio" color="primary" :disabled="!validEdit"
+            >Edit</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -75,7 +80,10 @@
     <v-dialog v-model="removeDialog" max-width="400px">
       <v-card :loading="removeLoader">
         <v-card-title>Really delete '{{ currentStudio.name }}'?</v-card-title>
-        <v-card-text>Scenes, images and movies by {{ currentStudio.name }} will stay in your collection</v-card-text>
+        <v-card-text
+          >Scenes, images and movies by {{ currentStudio.name }} will stay in your
+          collection</v-card-text
+        >
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn class="text-none" text color="error" @click="remove">Delete</v-btn>
@@ -87,36 +95,38 @@
 
 <script lang="ts">
 import { Component, Vue } from "vue-property-decorator";
-import ApolloClient, { serverBase } from "../../apollo";
+import ApolloClient from "../../apollo";
 import gql from "graphql-tag";
-import IActor from "../../types/actor";
 import { studioModule } from "../../store/studio";
 import StudioSelector from "../../components/StudioSelector.vue";
 import studioFragment from "../../fragments/studio";
 
+const urlExpression = /[-a-zA-Z0-9@:%_\+.~#?&//=]{2,256}\.[a-z]{2,4}\b(\/[-a-zA-Z0-9@:%_\+.~#?&//=]*)?/gi;
+const urlRegex = new RegExp(urlExpression);
+
 @Component({
   components: {
-    StudioSelector
-  }
+    StudioSelector,
+  },
 })
 export default class StudioToolbar extends Vue {
   editDialog = false;
   validEdit = false;
   editName = "";
   editDescription = "";
+  editUrl = "";
   editParent = null as any | null;
   editAliases = [] as string[];
 
-  studioNameRules = [v => (!!v && !!v.length) || "Invalid studio name"];
+  studioNameRules = [(v) => (!!v && !!v.length) || "Invalid studio name"];
+
+  urlRules = [(url: string) => url.match(urlRegex) || "Invalid URL"];
 
   removeDialog = false;
   removeLoader = false;
 
   getDomainName(url: string) {
-    return new URL(url).hostname
-      .split(".")
-      .slice(0, -1)
-      .join(".");
+    return new URL(url).hostname.split(".").slice(0, -1).join(".");
   }
 
   remove() {
@@ -130,14 +140,14 @@ export default class StudioToolbar extends Vue {
         }
       `,
       variables: {
-        ids: [this.currentStudio._id]
-      }
+        ids: [this.currentStudio._id],
+      },
     })
-      .then(res => {
+      .then((res) => {
         this.removeDialog = false;
         this.$router.replace("/studios");
       })
-      .catch(err => {
+      .catch((err) => {
         console.error(err);
       })
       .finally(() => {
@@ -150,7 +160,7 @@ export default class StudioToolbar extends Vue {
   }
 
   async sleep(ms: number) {
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise((r) => setTimeout(r, ms));
   }
 
   async editStudio() {
@@ -163,6 +173,7 @@ export default class StudioToolbar extends Vue {
         mutation($ids: [String!]!, $opts: StudioUpdateOpts!) {
           updateStudios(ids: $ids, opts: $opts) {
             _id
+            aliases
             parent {
               _id
               name
@@ -179,19 +190,22 @@ export default class StudioToolbar extends Vue {
         opts: {
           name: this.editName,
           description: this.editDescription,
+          url: this.editUrl,
           parent: this.editParent ? this.editParent._id : null,
-          aliases: this.editAliases
-        }
-      }
+          aliases: this.editAliases,
+        },
+      },
     })
       .then(res => {
+        const { aliases, parent } = res.data.updateStudios[0];
         studioModule.setName(this.editName.trim());
         studioModule.setDescription(this.editDescription.trim());
-        studioModule.setParent(res.data.updateStudios[0].parent);
-        studioModule.setAliases(this.editAliases);
+        studioModule.setUrl(this.editUrl.trim());
+        studioModule.setParent(parent);
+        studioModule.setAliases(aliases);
         this.editDialog = false;
       })
-      .catch(err => {
+      .catch((err) => {
         console.error(err);
       });
   }
@@ -201,6 +215,7 @@ export default class StudioToolbar extends Vue {
 
     this.editName = this.currentStudio.name;
     this.editDescription = this.currentStudio.description || "";
+    this.editUrl = this.currentStudio.url || "";
     this.editDialog = true;
     this.editParent = this.currentStudio.parent;
     this.editAliases = this.currentStudio.aliases || [];
@@ -220,10 +235,10 @@ export default class StudioToolbar extends Vue {
       variables: {
         ids: [this.currentStudio._id],
         opts: {
-          favorite: !this.currentStudio.favorite
-        }
-      }
-    }).then(res => {
+          favorite: !this.currentStudio.favorite,
+        },
+      },
+    }).then((res) => {
       studioModule.setFavorite(res.data.updateStudios[0].favorite);
     });
   }
@@ -242,10 +257,10 @@ export default class StudioToolbar extends Vue {
       variables: {
         ids: [this.currentStudio._id],
         opts: {
-          bookmark: this.currentStudio.bookmark ? null : Date.now()
-        }
-      }
-    }).then(res => {
+          bookmark: this.currentStudio.bookmark ? null : Date.now(),
+        },
+      },
+    }).then((res) => {
       studioModule.setBookmark(res.data.updateStudios[0].bookmark);
     });
   }

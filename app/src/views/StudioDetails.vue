@@ -1,6 +1,8 @@
 <template>
   <v-container fluid>
     <div v-if="currentStudio">
+      <BindFavicon />
+      <!-- TODO: allow studio favicons -->
       <BindTitle :value="currentStudio.name" />
 
       <v-row>
@@ -15,7 +17,7 @@
                 <v-img
                   @click="openThumbnailDialog"
                   v-ripple
-                  style="width: 50vw; max-width: 400px;"
+                  style="width: 50vw; max-width: 400px"
                   eager
                   :src="thumbnail"
                   class="hover"
@@ -34,37 +36,69 @@
         <v-col cols="12" sm="6">
           <div v-if="currentStudio.parent">
             Part of
-            <router-link
-              class="primary--text"
-              :to="`/studio/${currentStudio.parent._id}`"
-            >{{ currentStudio.parent.name }}</router-link>
+            <router-link class="primary--text" :to="`/studio/${currentStudio.parent._id}`">{{
+              currentStudio.parent.name
+            }}</router-link>
           </div>
-          <div
-            v-if="currentStudio.description"
-            class="med--text pa-2"
-          >{{ currentStudio.description }}</div>
+          <div v-if="currentStudio.description" class="med--text pa-2">
+            {{ currentStudio.description }}
+          </div>
+          <div v-if="currentStudio.url" class="med--text pa-2">
+            <a :href="currentStudio.url" target="_blank" rel="noopener noreferrer">
+            {{ currentStudio.url }}
+            </a>
+          </div>
+          <div class="py-1">
+            <b>{{ currentStudio.numScenes }}</b> scenes
+          </div>
+          <div class="py-1">
+            Avg. scene rating: <b>{{ (currentStudio.averageRating / 2).toFixed(1) }}</b>
+            <v-icon small>mdi-star</v-icon>
+          </div>
 
           <div class="pt-5 pa-2">
             <div class="d-flex align-center">
               <v-icon>mdi-label</v-icon>
               <v-subheader>Labels</v-subheader>
             </div>
-            <v-chip
-              label
-              class="mr-1 mb-1"
-              small
-              outlined
-              v-for="label in labelNames"
-              :key="label"
-            >{{ label }}</v-chip>
-            <v-chip
-              label
+            <label-group
+              :limit="999"
+              :item="currentStudio._id"
+              :value="currentStudio.labels"
+              @input="updateStudioLabels"
+            >
+              <v-chip
+                label
+                color="primary"
+                v-ripple
+                @click="openLabelSelector"
+                small
+                :class="`mr-1 mb-1 hover ${$vuetify.theme.dark ? 'black--text' : 'white--text'}`"
+                >+ Add</v-chip
+              >
+            </label-group>
+          </div>
+
+          <div class="text-center mt-2">
+            <v-btn
               color="primary"
-              v-ripple
-              @click="openLabelSelector"
-              small
-              :class="`mr-1 mb-1 hover ${$vuetify.theme.dark ? 'black--text' : 'white--text'}`"
-            >+ Add</v-chip>
+              :loading="pluginLoader"
+              text
+              class="text-none"
+              @click="runPlugins"
+              >Run plugins</v-btn
+            >
+          </div>
+
+          <div class="text-center mt-2">
+            <v-btn
+              color="primary"
+              :loading="attachUnmatchedScenesLoader"
+              text
+              class="text-none"
+              @click="attachUnmatchedScenes"
+              >Find unmatched scenes</v-btn
+            >
           </div>
         </v-col>
       </v-row>
@@ -73,7 +107,7 @@
         <v-tab>Substudios</v-tab>
         <v-tab>Scenes</v-tab>
         <v-tab>Movies</v-tab>
-        <v-tab>Actors</v-tab>
+        <v-tab>{{ actorPlural }}</v-tab>
       </v-tabs>
 
       <div class="pa-2" v-if="activeTab == 0">
@@ -91,16 +125,17 @@
             <studio-card :studio="studio" style="height: 100%" />
           </v-col>
         </v-row>
-        <div
-          class="mt-3 subtitle-1 text-center"
-          v-else
-        >No substudios found for {{ currentStudio.name }}</div>
+        <div class="mt-3 subtitle-1 text-center" v-else>
+          No substudios found for {{ currentStudio.name }}
+        </div>
       </div>
 
       <div class="pa-2" v-if="activeTab == 1">
         <v-row>
           <v-col cols="12">
-            <h1 class="text-center font-weight-light">{{ currentStudio.numScenes }} scenes</h1>
+            <h1 v-if="currentStudio.numScenes" class="text-center font-weight-light">
+              {{ currentStudio.numScenes }} scenes
+            </h1>
 
             <v-row>
               <v-col
@@ -116,31 +151,26 @@
                 <scene-card v-model="scenes[i]" style="height: 100%" />
               </v-col>
             </v-row>
+            <div class="text-center">
+              <v-btn
+                class="mt-3 text-none"
+                color="primary"
+                text
+                @click="loadScenePage"
+                v-if="moreScenes"
+                >Load more</v-btn
+              >
+            </div>
           </v-col>
         </v-row>
-
-        <infinite-loading v-if="currentStudio" :identifier="infiniteId" @infinite="infiniteHandler">
-          <div slot="no-results">
-            <v-icon large>mdi-close</v-icon>
-            <div>Nothing found!</div>
-          </div>
-
-          <div slot="spinner">
-            <v-progress-circular indeterminate></v-progress-circular>
-            <div>Loading...</div>
-          </div>
-
-          <div slot="no-more">
-            <v-icon large>mdi-emoticon-wink</v-icon>
-            <div>That's all!</div>
-          </div>
-        </infinite-loading>
       </div>
 
       <div class="pa-2" v-if="activeTab == 2">
         <v-row>
           <v-col cols="12">
-            <h1 class="text-center font-weight-light">{{ movies.length }} movies</h1>
+            <h1 v-if="numMovies >= 0" class="text-center font-weight-light">
+              {{ numMovies }} movies
+            </h1>
 
             <v-row>
               <v-col
@@ -156,6 +186,16 @@
                 <movie-card v-model="movies[i]" style="height: 100%" />
               </v-col>
             </v-row>
+            <div class="text-center">
+              <v-btn
+                class="mt-3 text-none"
+                color="primary"
+                text
+                @click="loadMoviePage"
+                v-if="moreMovies"
+                >Load more</v-btn
+              >
+            </div>
           </v-col>
         </v-row>
       </div>
@@ -163,6 +203,10 @@
       <div v-if="activeTab == 3">
         <v-row>
           <v-col cols="12">
+            <h1 v-if="numActors >= 0" class="text-center font-weight-light">
+              {{ numActors }} featured actors
+            </h1>
+
             <v-row>
               <v-col
                 class="pa-1"
@@ -177,6 +221,16 @@
                 <actor-card style="height: 100%" v-model="actors[i]" />
               </v-col>
             </v-row>
+            <div class="text-center">
+              <v-btn
+                class="mt-3 text-none"
+                color="primary"
+                text
+                @click="loadActorPage"
+                v-if="moreActors"
+                >Load more</v-btn
+              >
+            </div>
           </v-col>
         </v-row>
       </div>
@@ -184,7 +238,7 @@
 
     <v-dialog scrollable v-model="labelSelectorDialog" max-width="400px">
       <v-card :loading="labelEditLoader" v-if="currentStudio">
-        <v-card-title>Select labels for '{{ currentStudio.name }}'</v-card-title>
+        <v-card-title>Edit studio labels</v-card-title>
 
         <v-text-field
           clearable
@@ -205,6 +259,7 @@
         <v-divider></v-divider>
 
         <v-card-actions>
+          <v-btn @click="selectedLabels = []" text class="text-none">Clear</v-btn>
           <v-spacer></v-spacer>
           <v-btn @click="editLabels" text color="primary" class="text-none">Edit</v-btn>
         </v-card-actions>
@@ -213,9 +268,14 @@
 
     <v-dialog v-model="thumbnailDialog" max-width="400px">
       <v-card v-if="currentStudio" :loading="thumbnailLoader">
-        <v-card-title>Set logo for '{{ currentStudio.name }}'</v-card-title>
+        <v-card-title>Set studio logo</v-card-title>
         <v-card-text>
-          <v-file-input accept=".png,.jpg,.jpeg" color="primary" placeholder="Select an image" v-model="selectedThumbnail"></v-file-input>
+          <v-file-input
+            accept=".png,.jpg,.jpeg"
+            color="primary"
+            placeholder="Select an image"
+            v-model="selectedThumbnail"
+          ></v-file-input>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
@@ -228,28 +288,25 @@
 
 <script lang="ts">
 import { Component, Vue, Watch } from "vue-property-decorator";
-import ApolloClient, { serverBase } from "@/apollo";
+import ApolloClient from "@/apollo";
 import gql from "graphql-tag";
 import sceneFragment from "@/fragments/scene";
 import { studioModule } from "@/store/studio";
 import actorFragment from "@/fragments/actor";
 import imageFragment from "@/fragments/image";
 import movieFragment from "@/fragments/movie";
-import moment from "moment";
 import Lightbox from "@/components/Lightbox.vue";
-import SceneCard from "@/components/SceneCard.vue";
-import MovieCard from "@/components/MovieCard.vue";
+import SceneCard from "@/components/Cards/Scene.vue";
+import MovieCard from "@/components/Cards/Movie.vue";
 import ActorCard from "@/components/Cards/Actor.vue";
-import InfiniteLoading from "vue-infinite-loading";
-import { actorModule } from "@/store/actor";
 import IActor from "@/types/actor";
-import IImage from "@/types/image";
 import ILabel from "@/types/label";
 import studioFragment from "@/fragments/studio";
 import IScene from "@/types/scene";
 import IMovie from "@/types/movie";
-import StudioCard from "@/components/StudioCard.vue";
+import StudioCard from "@/components/Cards/Studio.vue";
 import LabelSelector from "@/components/LabelSelector.vue";
+import { contextModule } from "@/store/context";
 
 @Component({
   components: {
@@ -257,14 +314,13 @@ import LabelSelector from "@/components/LabelSelector.vue";
     SceneCard,
     MovieCard,
     ActorCard,
-    InfiniteLoading,
     StudioCard,
-    LabelSelector
+    LabelSelector,
   },
   beforeRouteLeave(_to, _from, next) {
     studioModule.setCurrent(null);
     next();
-  }
+  },
 })
 export default class StudioDetails extends Vue {
   movies = [] as IMovie[];
@@ -277,8 +333,19 @@ export default class StudioDetails extends Vue {
   selectedLabels = [] as number[];
   labelEditLoader = false;
 
-  infiniteId = 0;
-  page = 0;
+  pluginLoader = false;
+  attachUnmatchedScenesLoader = false;
+
+  scenePage = 0;
+  moreScenes = true;
+
+  numMovies = -1;
+  moviePage = 0;
+  moreMovies = true;
+
+  numActors = -1;
+  actorPage = 0;
+  moreActors = true;
 
   thumbnailDialog = false;
   thumbnailLoader = false;
@@ -288,25 +355,21 @@ export default class StudioDetails extends Vue {
 
   activeTab = 0;
 
+  get actorPlural() {
+    return contextModule.actorPlural;
+  }
+
   uploadThumbnail() {
-    if (!this.currentStudio) return;
+    if (!this.currentStudio) {
+      return;
+    }
 
     this.thumbnailLoader = true;
 
     ApolloClient.mutate({
       mutation: gql`
-        mutation(
-          $file: Upload!
-          $name: String
-          $studio: String
-          $lossless: Boolean
-        ) {
-          uploadImage(
-            file: $file
-            name: $name
-            studio: $studio
-            lossless: $lossless
-          ) {
+        mutation ($file: Upload!, $name: String, $studio: String, $lossless: Boolean) {
+          uploadImage(file: $file, name: $name, studio: $studio, lossless: $lossless) {
             ...ImageFragment
           }
         }
@@ -316,10 +379,10 @@ export default class StudioDetails extends Vue {
         file: this.selectedThumbnail,
         name: this.currentStudio.name + " (thumbnail)",
         studio: this.currentStudio._id,
-        lossless: true
-      }
+        lossless: true,
+      },
     })
-      .then(res => {
+      .then((res) => {
         const image = res.data.uploadImage;
         this.setAsThumbnail(image._id);
         this.thumbnailDialog = false;
@@ -334,225 +397,21 @@ export default class StudioDetails extends Vue {
     this.thumbnailDialog = true;
   }
 
-  /* removeImage(index: number) {
-    ApolloClient.mutate({
-      mutation: gql`
-        mutation($ids: [String!]!) {
-          removeImages(ids: $ids)
-        }
-      `,
-      variables: {
-        ids: [this.images[index]._id]
-      }
-    })
-      .then(res => {
-        this.images.splice(index, 1);
-        this.lightboxIndex = null;
-      })
-      .catch(err => {
-        console.error(err);
-      })
-      .finally(() => {});
-  }
-
-  updateImage({
-    index,
-    key,
-    value
-  }: {
-    index: number;
-    key: string;
-    value: any;
-  }) {
-    const images = this.images[index];
-    images[key] = value;
-    Vue.set(this.images, index, images);
-  } */
-
   get currentStudio() {
     return studioModule.current;
   }
 
-  async fetchPage() {
-    if (!this.currentStudio) return;
-
-    try {
-      const query = `page:${this.page} sortDir:desc sortBy:addedOn studios:${this.currentStudio._id}`;
-
-      const result = await ApolloClient.query({
-        query: gql`
-          query($query: String) {
-            getScenes(query: $query) {
-              items {
-                ...SceneFragment
-                actors {
-                  ...ActorFragment
-                }
-                studio {
-                  _id
-                  name
-                }
-              }
-            }
-          }
-          ${sceneFragment}
-          ${actorFragment}
-        `,
-        variables: {
-          query
-        }
-      });
-
-      return result.data.getScenes.items;
-    } catch (err) {
-      throw err;
+  async fetchActorPage() {
+    if (!this.currentStudio) {
+      return;
     }
-  }
 
-  infiniteHandler($state) {
-    this.fetchPage().then(items => {
-      if (items.length) {
-        this.page++;
-        this.scenes.push(...items);
-        $state.loaded();
-      } else {
-        $state.complete();
-      }
-    });
-  }
-
-  setAsThumbnail(id: string) {
-    if (!this.currentStudio) return;
-
-    ApolloClient.mutate({
-      mutation: gql`
-        mutation($ids: [String!]!, $opts: StudioUpdateOpts!) {
-          updateStudios(ids: $ids, opts: $opts) {
-            thumbnail {
-              _id
-            }
-          }
-        }
-      `,
-      variables: {
-        ids: [this.currentStudio._id],
-        opts: {
-          thumbnail: id
-        }
-      }
-    })
-      .then(res => {
-        studioModule.setThumbnail(id);
-      })
-      .catch(err => {
-        console.error(err);
-      });
-  }
-
-  editLabels() {
-    if (!this.currentStudio) return;
-
-    this.labelEditLoader = true;
-    ApolloClient.mutate({
-      mutation: gql`
-        mutation($ids: [String!]!, $opts: StudioUpdateOpts!) {
-          updateStudios(ids: $ids, opts: $opts) {
-            labels {
-              _id
-              name
-              aliases
-            }
-          }
-        }
-      `,
-      variables: {
-        ids: [this.currentStudio._id],
-        opts: {
-          labels: this.selectedLabels
-            .map(i => this.allLabels[i])
-            .map(l => l._id)
-        }
-      }
-    })
-      .then(res => {
-        studioModule.setLabels(res.data.updateStudios[0].labels);
-        this.labelSelectorDialog = false;
-      })
-      .catch(err => {
-        console.error(err);
-      })
-      .finally(() => {
-        this.labelEditLoader = false;
-      });
-  }
-
-  openLabelSelector() {
-    if (!this.currentStudio) return;
-
-    if (!this.allLabels.length) {
-      ApolloClient.query({
-        query: gql`
-          {
-            getLabels {
-              _id
-              name
-              aliases
-            }
-          }
-        `
-      })
-        .then(res => {
-          if (!this.currentStudio) return;
-
-          this.allLabels = res.data.getLabels;
-          this.selectedLabels = this.currentStudio.labels.map(l =>
-            this.allLabels.findIndex(k => k._id == l._id)
-          );
-          this.labelSelectorDialog = true;
-        })
-        .catch(err => {
-          console.error(err);
-        });
-    } else {
-      this.labelSelectorDialog = true;
-    }
-  }
-
-  get labelNames() {
-    if (!this.currentStudio) return [];
-    return this.currentStudio.labels.map(l => l.name).sort();
-  }
-
-  get thumbnail() {
-    if (this.currentStudio && this.currentStudio.thumbnail)
-      return `${serverBase}/image/${
-        this.currentStudio.thumbnail._id
-      }?password=${localStorage.getItem("password")}`;
-    return `${serverBase}/broken`;
-  }
-
-  @Watch("$route.params.id")
-  onRouteChange() {
-    studioModule.setCurrent(null);
-    this.movies = [];
-    this.scenes = [];
-    this.selectedLabels = [];
-    this.page = 0;
-    this.onLoad();
-  }
-
-  @Watch("activeTab")
-  onTabChange(val: number) {
-    if (val === 2 && !this.movies.length) this.loadMovies();
-    if (val === 3 && !this.actors.length) this.loadActors();
-  }
-
-  loadActors() {
-    ApolloClient.query({
+    const result = await ApolloClient.query({
       query: gql`
-        query($id: String!) {
-          getStudioById(id: $id) {
-            actors {
+        query ($query: ActorSearchQuery!) {
+          getActors(query: $query) {
+            numItems
+            items {
               ...ActorFragment
               thumbnail {
                 _id
@@ -561,6 +420,7 @@ export default class StudioDetails extends Vue {
               labels {
                 _id
                 name
+                color
               }
             }
           }
@@ -568,19 +428,30 @@ export default class StudioDetails extends Vue {
         ${actorFragment}
       `,
       variables: {
-        id: (<any>this).$route.params.id
-      }
-    }).then(res => {
-      this.actors = res.data.getStudioById.actors;
+        query: {
+          page: this.actorPage,
+          studios: [this.currentStudio._id],
+          sortDir: "desc",
+          sortBy: "addedOn",
+        },
+      },
     });
+
+    this.numActors = result.data.getActors.numItems;
+    return result.data.getActors.items;
   }
 
-  loadMovies() {
-    ApolloClient.query({
+  async fetchMoviePage() {
+    if (!this.currentStudio) {
+      return;
+    }
+
+    const result = await ApolloClient.query({
       query: gql`
-        query($id: String!) {
-          getStudioById(id: $id) {
-            movies {
+        query ($query: MovieSearchQuery!) {
+          getMovies(query: $query) {
+            numItems
+            items {
               ...MovieFragment
               actors {
                 ...ActorFragment
@@ -595,28 +466,77 @@ export default class StudioDetails extends Vue {
           }
         }
         ${movieFragment}
-        ${actorFragment}
         ${sceneFragment}
+        ${actorFragment}
         ${studioFragment}
       `,
       variables: {
-        id: (<any>this).$route.params.id
-      }
-    }).then(res => {
-      this.movies = res.data.getStudioById.movies;
+        query: {
+          page: this.moviePage,
+          studios: [this.currentStudio._id],
+          sortDir: "desc",
+          sortBy: "addedOn",
+        },
+      },
     });
+
+    this.numMovies = result.data.getMovies.numItems;
+    return result.data.getMovies.items;
   }
 
-  onLoad() {
-    ApolloClient.query({
+  async fetchScenePage() {
+    if (!this.currentStudio) {
+      return;
+    }
+
+    const result = await ApolloClient.query({
       query: gql`
-        query($id: String!) {
-          getStudioById(id: $id) {
+        query ($query: SceneSearchQuery!) {
+          getScenes(query: $query) {
+            items {
+              ...SceneFragment
+              actors {
+                ...ActorFragment
+              }
+              studio {
+                _id
+                name
+              }
+            }
+          }
+        }
+        ${sceneFragment}
+        ${actorFragment}
+      `,
+      variables: {
+        query: {
+          page: this.scenePage,
+          studios: [this.currentStudio._id],
+          sortDir: "desc",
+          sortBy: "addedOn",
+        },
+      },
+    });
+
+    return result.data.getScenes.items;
+  }
+
+  runPlugins() {
+    if (!this.currentStudio) {
+      return;
+    }
+
+    this.pluginLoader = true;
+    ApolloClient.mutate({
+      mutation: gql`
+        mutation ($id: String!) {
+          runStudioPlugins(id: $id) {
             ...StudioFragment
             numScenes
             labels {
               _id
               name
+              color
             }
             thumbnail {
               _id
@@ -627,6 +547,7 @@ export default class StudioDetails extends Vue {
               labels {
                 _id
                 name
+                color
               }
             }
             substudios {
@@ -635,6 +556,7 @@ export default class StudioDetails extends Vue {
               labels {
                 _id
                 name
+                color
               }
               thumbnail {
                 _id
@@ -645,9 +567,308 @@ export default class StudioDetails extends Vue {
         ${studioFragment}
       `,
       variables: {
-        id: (<any>this).$route.params.id
+        id: this.currentStudio._id,
+      },
+    })
+      .then((res) => {
+        studioModule.setCurrent(res.data.runStudioPlugins);
+      })
+      .catch((err) => {
+        console.error(err);
+      })
+      .finally(() => {
+        this.pluginLoader = false;
+      });
+  }
+
+  attachUnmatchedScenes() {
+    if (!this.currentStudio) {
+      return;
+    }
+    this.attachUnmatchedScenesLoader = true;
+    ApolloClient.mutate({
+      mutation: gql`
+        mutation ($id: String!) {
+          attachStudioToUnmatchedScenes(id: $id) {
+            ...StudioFragment
+            numScenes
+            labels {
+              _id
+              name
+              color
+            }
+            thumbnail {
+              _id
+            }
+            parent {
+              _id
+              name
+              labels {
+                _id
+                name
+                color
+              }
+            }
+            substudios {
+              ...StudioFragment
+              numScenes
+              labels {
+                _id
+                name
+                color
+              }
+              thumbnail {
+                _id
+              }
+            }
+          }
+        }
+        ${studioFragment}
+      `,
+      variables: {
+        id: this.currentStudio._id,
+      },
+    })
+      .then((res) => {
+        studioModule.setCurrent(res.data.attachStudioToUnmatchedScenes);
+      })
+      .catch((err) => {
+        console.error(err);
+      })
+      .finally(() => {
+        this.attachUnmatchedScenesLoader = false;
+      });
+  }
+
+  loadActorPage() {
+    this.fetchActorPage().then((items) => {
+      if (items.length) {
+        this.actorPage++;
+        this.actors.push(...items);
+      } else {
+        this.moreActors = false;
       }
-    }).then(res => {
+    });
+  }
+
+  loadMoviePage() {
+    this.fetchMoviePage().then((items) => {
+      if (items.length) {
+        this.moviePage++;
+        this.movies.push(...items);
+      } else {
+        this.moreMovies = false;
+      }
+    });
+  }
+
+  loadScenePage() {
+    this.fetchScenePage().then((items) => {
+      if (items.length) {
+        this.scenePage++;
+        this.scenes.push(...items);
+      } else {
+        this.moreScenes = false;
+      }
+    });
+  }
+
+  setAsThumbnail(id: string) {
+    if (!this.currentStudio) {
+      return;
+    }
+
+    ApolloClient.mutate({
+      mutation: gql`
+        mutation ($ids: [String!]!, $opts: StudioUpdateOpts!) {
+          updateStudios(ids: $ids, opts: $opts) {
+            thumbnail {
+              _id
+            }
+          }
+        }
+      `,
+      variables: {
+        ids: [this.currentStudio._id],
+        opts: {
+          thumbnail: id,
+        },
+      },
+    })
+      .then((res) => {
+        studioModule.setThumbnail(id);
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  }
+
+  updateStudioLabels(labels: ILabel[]) {
+    if (!this.currentStudio) {
+      return Promise.reject();
+    }
+
+    return ApolloClient.mutate({
+      mutation: gql`
+        mutation ($ids: [String!]!, $opts: StudioUpdateOpts!) {
+          updateStudios(ids: $ids, opts: $opts) {
+            labels {
+              _id
+              name
+              aliases
+              color
+            }
+          }
+        }
+      `,
+      variables: {
+        ids: [this.currentStudio._id],
+        opts: {
+          labels: labels.map((l) => l._id),
+        },
+      },
+    })
+      .then((res) => {
+        studioModule.setLabels(res.data.updateStudios[0].labels);
+      })
+      .catch((err) => {
+        console.error(err);
+      });
+  }
+
+  editLabels() {
+    if (!this.currentStudio) {
+      return;
+    }
+
+    this.labelEditLoader = true;
+    return this.updateStudioLabels(this.selectedLabels.map((i) => this.allLabels[i]))
+      .then((res) => {
+        this.labelSelectorDialog = false;
+      })
+      .finally(() => {
+        this.labelEditLoader = false;
+      });
+  }
+
+  async loadLabels() {
+    const res = await ApolloClient.query({
+      query: gql`
+        {
+          getLabels {
+            _id
+            name
+            aliases
+            color
+          }
+        }
+      `,
+    });
+
+    this.allLabels = res.data.getLabels;
+  }
+
+  openLabelSelector() {
+    if (!this.currentStudio) {
+      return;
+    }
+
+    if (!this.allLabels.length) {
+      this.loadLabels()
+        .then(() => {
+          if (!this.currentStudio) {
+            return;
+          }
+
+          this.selectedLabels = this.currentStudio.labels.map((l) =>
+            this.allLabels.findIndex((k) => k._id == l._id)
+          );
+          this.labelSelectorDialog = true;
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    } else {
+      this.labelSelectorDialog = true;
+    }
+  }
+
+  get thumbnail() {
+    if (this.currentStudio && this.currentStudio.thumbnail)
+      return `/api/media/image/${this.currentStudio.thumbnail._id}?password=${localStorage.getItem(
+        "password"
+      )}`;
+    return "/assets/broken.png";
+  }
+
+  @Watch("$route.params.id")
+  onRouteChange() {
+    studioModule.setCurrent(null);
+    this.movies = [];
+    this.scenes = [];
+    this.selectedLabels = [];
+    this.scenePage = 0;
+    this.onLoad();
+  }
+
+  @Watch("activeTab")
+  onTabChange(val: number) {
+    if (val === 1 && !this.scenes.length) {
+      this.loadScenePage();
+    }
+    if (val === 2 && !this.movies.length) {
+      this.loadMoviePage();
+    }
+    if (val === 3 && !this.actors.length) {
+      this.loadActorPage();
+    }
+  }
+
+  onLoad() {
+    ApolloClient.query({
+      query: gql`
+        query ($id: String!) {
+          getStudioById(id: $id) {
+            ...StudioFragment
+            numScenes
+            averageRating
+            labels {
+              _id
+              name
+              color
+            }
+            thumbnail {
+              _id
+            }
+            parent {
+              _id
+              name
+              labels {
+                _id
+                name
+                color
+              }
+            }
+            substudios {
+              ...StudioFragment
+              numScenes
+              labels {
+                _id
+                name
+                color
+              }
+              thumbnail {
+                _id
+              }
+            }
+          }
+        }
+        ${studioFragment}
+      `,
+      variables: {
+        id: (<any>this).$route.params.id,
+      },
+    }).then((res) => {
       studioModule.setCurrent(res.data.getStudioById);
     });
   }

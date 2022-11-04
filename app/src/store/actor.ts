@@ -1,53 +1,8 @@
-import { VuexModule, Module, Mutation, Action } from "vuex-class-modules";
+import { VuexModule, Module, Mutation } from "vuex-class-modules";
 
 @Module
 class ActorModule extends VuexModule {
   current = null as IActor | null;
-
-  page = 1;
-  numResults = 0;
-  numPages = 0;
-  // items = [] as IActor[];
-
-  /* @Mutation
-  unshift(items: IActor[]) {
-    this.items.unshift(...items);
-  } */
-
-  @Mutation
-  resetPagination() {
-    // this.items = [];
-    this.numPages = 0;
-    this.numResults = 0;
-    this.page = 1;
-  }
-
-  @Mutation
-  setPage(num: number) {
-    this.page = num;
-  }
-
-  /* @Mutation
-  removeScenes(ids: string[]) {
-    for (const id of ids) {
-      this.items = this.items.filter((scene) => scene._id != id);
-    }
-  } */
-
-  @Mutation
-  setPagination({
-    // items,
-    numResults,
-    numPages,
-  }: {
-    // items: IActor[];
-    numResults: number;
-    numPages: number;
-  }) {
-    // this.items = items;
-    this.numResults = numResults;
-    this.numPages = numPages;
-  }
 
   @Mutation
   setNationality(nation: any) {
@@ -80,8 +35,8 @@ class ActorModule extends VuexModule {
   }
 
   @Mutation
-  setBookmark(bool: number | null) {
-    if (this.current) this.current.bookmark = bool;
+  setBookmark(dateValue: number | null) {
+    if (this.current) this.current.bookmark = dateValue;
   }
 
   @Mutation
@@ -93,13 +48,17 @@ class ActorModule extends VuexModule {
   setBornOn(date: number | null) {
     if (this.current) this.current.bornOn = date;
   }
+  
+  @Mutation
+  setAge(age: number | null) {
+    if (this.current) this.current.age = age;
+  }
 
   @Mutation
   setThumbnail(id: string | null) {
     if (this.current) {
       if (id) {
-        if (!this.current.thumbnail)
-          this.current.thumbnail = { _id: id, color: null };
+        if (!this.current.thumbnail) this.current.thumbnail = { _id: id, color: null };
         this.current.thumbnail._id = id;
       } else {
         this.current.thumbnail = null;
@@ -111,8 +70,7 @@ class ActorModule extends VuexModule {
   setAltThumbnail(id: string | null) {
     if (this.current) {
       if (id) {
-        if (!this.current.altThumbnail)
-          this.current.altThumbnail = { _id: id, color: null };
+        if (!this.current.altThumbnail) this.current.altThumbnail = { _id: id, color: null };
         this.current.altThumbnail._id = id;
       } else {
         this.current.altThumbnail = null;
@@ -124,8 +82,7 @@ class ActorModule extends VuexModule {
   setAvatar(id: string | null) {
     if (this.current) {
       if (id) {
-        if (!this.current.avatar)
-          this.current.avatar = { _id: id, color: null };
+        if (!this.current.avatar) this.current.avatar = { _id: id, color: null };
         this.current.avatar._id = id;
       } else {
         this.current.avatar = null;
